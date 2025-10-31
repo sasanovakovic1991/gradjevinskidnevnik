@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Građevinski dnevnik v3.1</title>
   <meta name="theme-color" content="#0f172a" />
-  <link rel="manifest" href="manifest.json" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -34,15 +33,15 @@
     .list{border:1px dashed #2b3756;border-radius:10px;padding:8px}
     .item{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px;border-bottom:1px solid #223}
     .item:last-child{border-bottom:none}
-    .center-wrap{min-height:70vh;display:flex;align-items:center;justify-content:center}
-    #viewAuth.card{max-width:420px;margin:0 auto;text-align:center}
-    /* Splash screen */
-    #splash{position:fixed;inset:0;background:#0f172a;display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:9999;transition:opacity .35s ease}
-    #splash h1{color:#e5e7eb;margin:12px 0 0 0}
-    .spinner{width:38px;height:38px;border-radius:50%;border:3px solid #334155;border-top-color:#22c55e;animation:spin 1s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
     @media(max-width:768px){header{flex-direction:column;align-items:flex-start}}
-  </style>
+  .center-wrap{min-height:70vh;display:flex;align-items:center;justify-content:center}
+#viewAuth.card{max-width:420px;margin:0 auto;text-align:center}
+/* Splash screen */
+#splash{position:fixed;inset:0;background:#0f172a;display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:9999;transition:opacity .35s ease}
+#splash h1{color:#e5e7eb;margin:12px 0 0 0}
+.spinner{width:38px;height:38px;border-radius:50%;border:3px solid #334155;border-top-color:#22c55e;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
 </head>
 <body>
   <!-- Splash Screen -->
@@ -50,7 +49,6 @@
     <div class="spinner"></div>
     <h1>Građevinski dnevnik</h1>
   </div>
-
   <header>
     <h1>Građevinski dnevnik</h1>
     <div id="userBadge"></div>
@@ -153,7 +151,6 @@ const openDB=()=>new Promise((res,rej)=>{
     if(!d.objectStoreNames.contains('logs')) d.createObjectStore('logs',{keyPath:'id'});
   };
   r.onsuccess=()=>{db=r.result;res(db)};
-  r.onerror=()=>rej(r.error);
 });
 const tx=(s,m='readonly')=>db.transaction(s,m).objectStore(s);
 const put=(s,v)=>new Promise(r=>{const req=tx(s,'readwrite').put(v);req.onsuccess=()=>r(v)});
@@ -169,8 +166,14 @@ async function ensureUsers(){
 }
 async function login(){
   const role=$$('#authRole').value; const pin=$$('#authPin').value.trim();
-  const users=await all('users'); const user=users.find(u=>u.role===role);
-  if(!user) return $$('#msg').textContent='Nema korisnika. Očisti staru bazu ili ponovno učitaj.';
+  let users=await all('users'); let user=users.find(u=>u.role===role);
+  if(!user){
+    // pokušaj auto-kreirati korisnike pa ponovno
+    await ensureUsers();
+    users=await all('users');
+    user=users.find(u=>u.role===role);
+  }
+  if(!user) return $$('#msg').textContent='Nema korisnika. Klikni “Kreiraj korisnike (demo)”.';
   const ok=(await sha(pin))===user.pinHash; if(!ok) return $$('#msg').textContent='Krivi PIN.';
   $$('#viewAuth').style.display='none';
   if(role==='admin') renderAdmin(); else renderForeman();
@@ -252,7 +255,7 @@ async function tableEdit(store,fields,labels){
   const data=await all(store);
   let html='<table><tr>'+labels.map(l=>`<th>${l}</th>`).join('')+'<th>Akcija</th></tr>';
   data.forEach(d=>{
-    html+='<tr>'+fields.map(f=>`<td contenteditable onblur="updateField(\'${store}\',\'${d.id}\',\'${f}\',this.innerText)">${d[f]||''}</td>`).join('')+
+    html+='<tr>'+fields.map(f=>`<td contenteditable onblur="updateField('${store}','${d.id}','${f}',this.innerText)">${d[f]||''}</td>`).join('')+
       `<td><button class='btn danger' onclick="delRec('${store}','${d.id}').then(()=>adminPanel('${store}'))">Obriši</button></td></tr>`;
   });
   html+='</table><h4>Dodaj novi</h4>';
@@ -260,6 +263,7 @@ async function tableEdit(store,fields,labels){
   html+=` <button class='btn primary' onclick="addRecBasic('${store}')">Dodaj</button>`;
   wrap.innerHTML=html; return wrap;
 }
+
 async function addRecBasic(store){
   if(store==='sites'){
     const name=$$('#add_name')?.value?.trim(); const location=$$('#add_location')?.value?.trim(); if(!name) return alert('Naziv je obavezan.');
@@ -274,7 +278,7 @@ async function tableEditWithRates(store,fields,labels,entityType){
   let html='<table><tr>'+labels.map(l=>`<th>${l}</th>`).join('')+`<th>Cijena €/h (prodaja)</th><th>Nabavna €/h (trošak)</th><th>Akcija</th></tr>`;
   data.forEach(d=>{
     const rv=rmap[d.id]||{sell:'',cost:''};
-    html+='<tr>'+fields.map(f=>`<td contenteditable onblur="updateField(\'${store}\',\'${d.id}\',\'${f}\',this.innerText)">${d[f]||''}</td>`).join('')+
+    html+='<tr>'+fields.map(f=>`<td contenteditable onblur="updateField('${store}','${d.id}','${f}',this.innerText)">${d[f]||''}</td>`).join('')+
       `<td contenteditable onblur="updateRate('${d.id}','sell',this.innerText)">${rv.sell}</td>`+
       `<td contenteditable onblur="updateRate('${d.id}','cost',this.innerText)">${rv.cost}</td>`+
       `<td><button class='btn danger' onclick="delEntityWithRate('${store}','${d.id}')">Obriši</button></td></tr>`;
@@ -284,10 +288,6 @@ async function tableEditWithRates(store,fields,labels,entityType){
   html+=`<input id='add_sell' placeholder='Cijena €/h (prodajna)'><input id='add_cost' placeholder='Nabavna €/h (trošak)'>`;
   html+=` <button class='btn primary' onclick="addEntityWithRate('${store}','${entityType}')">Dodaj</button>`;
   wrap.innerHTML=html; return wrap;
-}
-async function updateField(store,id,key,val){
-  const rows=await all(store); const rec=rows.find(x=>x.id===id);
-  if(rec){ rec[key]=val; await put(store,rec); }
 }
 async function updateRate(id,key,val){
   const store=tx('rates','readwrite'); const req=store.get(id); req.onsuccess=()=>{const cur=req.result||{id}; cur[key]=+val||0; put('rates',cur)};
@@ -314,11 +314,9 @@ async function renderReports(){
       <div><label>Gradilište</label><select id="rep_site"></select></div>
       <div><label>Od</label><input type="date" id="rep_from"></div>
       <div><label>Do</label><input type="date" id="rep_to"></div>
-      <div class="row">
-        <button class="btn primary" id="btnFilter">Filtriraj</button>
-        <button class="btn pdf" id="btnPDF">PDF sažetak</button>
-        <button class="btn excel" id="btnExcel">💾 Excel backup (dnevnici)</button>
-      </div>
+      <div class="row"><button class="btn primary" id="btnFilter">Filtriraj</button>
+      <button class="btn pdf" id="btnPDF">PDF sažetak</button>
+      <button class="btn excel" id="btnExcel">💾 Excel backup (dnevnici)</button></div>
     </div>
     <div id="rep_text" style="white-space:pre-wrap;margin-top:12px"></div>
     <canvas id="rep_chart"></canvas>`;
@@ -349,7 +347,7 @@ async function loadReport(){
   const site=$$('#rep_site').value, from=$$('#rep_from').value, to=$$('#rep_to').value;
   const flogs=logs.filter(l=>(!from||l.date>=from)&&(!to||l.date<=to)&&(site==='all'||l.siteId===site));
   const agg=buildAgg(flogs, rates, sites);
-  // TEXTUAL SUMMARY
+  // TEXTUAL SUMMARY (no tables)
   let text=''; let grand=0;
   for(const [name,v] of Object.entries(agg)){
     const sum=v.totalSell; grand+=sum;
@@ -384,7 +382,8 @@ async function exportPDFSummaryText(){
   const date=new Date().toLocaleString('hr-HR');
   doc.setTextColor(220,38,38); doc.setFontSize(18); doc.text('Građevinski dnevnik',140,30);
   doc.setTextColor(0,0,0); doc.setFontSize(12); doc.text(`Izvještaj generiran: ${date}` ,20,50);
-  const lines=$$('#rep_text').textContent.split('\n'); let y=70; const maxW=380;
+  const lines=$$('#rep_text').textContent.split('
+'); let y=70; const maxW=380;
   lines.forEach(line=>{ const chunks=doc.splitTextToSize(line,maxW); chunks.forEach(ch=>{ if(y>760){doc.addPage(); y=40;} doc.text(ch,20,y); y+=16; }); });
   const url=doc.output('bloburl'); window.open(url,'_blank');
 }
@@ -405,6 +404,7 @@ async function renderPayroll(){
   $$('#pl_go').onclick=()=>loadPayroll();
   $$('#pl_pdf').onclick=()=>exportPayrollPDF();
 }
+
 async function loadPayroll(){
   const from=$$('#pl_from').value, to=$$('#pl_to').value;
   const [logs,workers,rates]=await Promise.all([all('logs'),all('workers'),all('rates')]);
@@ -414,17 +414,25 @@ async function loadPayroll(){
   logs.filter(l=>(!from||l.date>=from)&&(!to||l.date<=to)).forEach(l=>{
     l.workers.forEach(w=>{agg[w.id]??={name:wm[w.id]||w.id,hours:0,cost:0,sell:0}; agg[w.id].hours+=(w.hours||0); const r=rm[w.id]||{sell:0,cost:0}; agg[w.id].sell+=r.sell*(w.hours||0); agg[w.id].cost+=r.cost*(w.hours||0);});
   });
-  let text='Evidencija sati po radniku\n\n'; let totalHours=0, totalCost=0, totalSell=0;
-  Object.values(agg).sort((a,b)=>a.name.localeCompare(b.name)).forEach(v=>{ totalHours+=v.hours; totalCost+=v.cost; totalSell+=v.sell; text+=`• ${v.name}: ${fmtH(v.hours)} | Trošak: ${fmtE(v.cost)} | Obračun (prodaja): ${fmtE(v.sell)}\n`; });
-  text+=`\nUKUPNO sati: ${fmtH(totalHours)}\nUKUPAN trošak: ${fmtE(totalCost)}\nUKUPAN obračun (prodaja): ${fmtE(totalSell)}`;
+  let text='Evidencija sati po radniku
+
+'; let totalHours=0, totalCost=0, totalSell=0;
+  Object.values(agg).sort((a,b)=>a.name.localeCompare(b.name)).forEach(v=>{ totalHours+=v.hours; totalCost+=v.cost; totalSell+=v.sell; text+=`• ${v.name}: ${fmtH(v.hours)} | Trošak: ${fmtE(v.cost)} | Obračun (prodaja): ${fmtE(v.sell)}
+`; });
+  text+=`
+UKUPNO sati: ${fmtH(totalHours)}
+UKUPAN trošak: ${fmtE(totalCost)}
+UKUPAN obračun (prodaja): ${fmtE(totalSell)}`;
   $$('#pl_text').textContent=text || 'Nema podataka u odabranom periodu.';
 }
+
 async function exportPayrollPDF(){
   const {jsPDF}=window.jspdf; const doc=new jsPDF({orientation:'portrait',unit:'px',format:'a4'});
   const date=new Date().toLocaleString('hr-HR');
   doc.setTextColor(220,38,38); doc.setFontSize(18); doc.text('Građevinski dnevnik',140,30);
   doc.setTextColor(0,0,0); doc.setFontSize(12); doc.text(`Evidencija sati – generirano: ${date}`,20,50);
-  const lines=$$('#pl_text').textContent.split('\n'); let y=70; const maxW=380;
+  const lines=$$('#pl_text').textContent.split('
+'); let y=70; const maxW=380;
   lines.forEach(line=>{ const chunk=doc.splitTextToSize(line,maxW); chunk.forEach(ch=>{ if(y>760){doc.addPage(); y=40;} doc.text(ch,20,y); y+=16; }); });
   const url=doc.output('bloburl'); window.open(url,'_blank');
 }
@@ -443,39 +451,55 @@ async function renderSiteHours(){
     </div>
     <div id="sh_text" style="white-space:pre-wrap;margin-top:12px"></div>`;
   $$('#adminPanel').append(wrap);
+  // napuni gradilišta
   const sites=await all('sites');
   $$('#sh_site').innerHTML=sites.map(s=>`<option value="${s.id}">${s.name}${s.location?(' ('+s.location+')'):''}</option>`).join('');
   $$('#sh_go').onclick=()=>loadSiteHours();
   $$('#sh_pdf').onclick=()=>exportSiteHoursPDF();
 }
+
 async function loadSiteHours(){
   const site=$$('#sh_site').value, from=$$('#sh_from').value, to=$$('#sh_to').value;
   const [logs,workers,equipment]=await Promise.all([all('logs'),all('workers'),all('equipment')]);
   const wm=Object.fromEntries(workers.map(w=>[w.id,w.name]));
   const em=Object.fromEntries(equipment.map(e=>[e.id,e.name]));
   const filtered=logs.filter(l=> l.siteId===site && (!from||l.date>=from) && (!to||l.date<=to));
+
   const aggW={}, aggE={}; let totalWh=0, totalEh=0;
   filtered.forEach(l=>{
     l.workers.forEach(w=>{ aggW[w.id]??={name:wm[w.id]||w.name, hours:0}; aggW[w.id].hours+=(w.hours||0); totalWh+=w.hours||0; });
     l.equipment.forEach(e=>{ aggE[e.id]??={name:em[e.id]||e.name, hours:0}; aggE[e.id].hours+=(e.hours||0); totalEh+=e.hours||0; });
   });
   let text='';
-  text+='RADNICI (sati)\n';
-  if(Object.keys(aggW).length===0) text+='  — Nema zapisa\n';
-  else Object.values(aggW).sort((a,b)=>a.name.localeCompare(b.name)).forEach(v=>{ text+=`  • ${v.name}: ${fmtH(v.hours)}\n`; });
-  text+=`  Ukupno sati radnika: ${fmtH(totalWh)}\n\n`;
-  text+='STROJEVI (sati)\n';
-  if(Object.keys(aggE).length===0) text+='  — Nema zapisa\n';
-  else Object.values(aggE).sort((a,b)=>a.name.localeCompare(b.name)).forEach(v=>{ text+=`  • ${v.name}: ${fmtH(v.hours)}\n`; });
-  text+=`  Ukupno sati strojeva: ${fmtH(totalEh)}\n`;
+  text+='RADNICI (sati)
+';
+  if(Object.keys(aggW).length===0) text+='  — Nema zapisa
+';
+  else Object.values(aggW).sort((a,b)=>a.name.localeCompare(b.name)).forEach(v=>{ text+=`  • ${v.name}: ${fmtH(v.hours)}
+`; });
+  text+=`  Ukupno sati radnika: ${fmtH(totalWh)}
+
+`;
+
+  text+='STROJEVI (sati)
+';
+  if(Object.keys(aggE).length===0) text+='  — Nema zapisa
+';
+  else Object.values(aggE).sort((a,b)=>a.name.localeCompare(b.name)).forEach(v=>{ text+=`  • ${v.name}: ${fmtH(v.hours)}
+`; });
+  text+=`  Ukupno sati strojeva: ${fmtH(totalEh)}
+`;
+
   $$('#sh_text').textContent=text || 'Nema podataka za odabrano gradilište/razdoblje.';
 }
+
 async function exportSiteHoursPDF(){
   const {jsPDF}=window.jspdf; const doc=new jsPDF({orientation:'portrait',unit:'px',format:'a4'});
   const date=new Date().toLocaleString('hr-HR');
   doc.setTextColor(220,38,38); doc.setFontSize(18); doc.text('Građevinski dnevnik',140,30);
   doc.setTextColor(0,0,0); doc.setFontSize(12); doc.text(`Sati po gradilištu – generirano: ${date}`,20,50);
-  const lines=$$('#sh_text').textContent.split('\n'); let y=70; const maxW=380;
+  const lines=$$('#sh_text').textContent.split('
+'); let y=70; const maxW=380;
   lines.forEach(line=>{ const chunk=doc.splitTextToSize(line,maxW); chunk.forEach(ch=>{ if(y>760){doc.addPage(); y=40;} doc.text(ch,20,y); y+=16; }); });
   const url=doc.output('bloburl'); window.open(url,'_blank');
 }
@@ -495,16 +519,62 @@ async function exportExcelLogs(){
 openDB().then(()=>{
   ensureUsers();
   $$('#btnLogin').onclick=login;
-  // hide splash shortly after DB ready (failsafe timeout as well)
-  setTimeout(()=>{ const s=$$('#splash'); if(s){ s.style.opacity='0'; setTimeout(()=>s.style.display='none',350); } }, 400);
+  // hide splash shortly after DB ready
+  setTimeout(()=>{ const s=$$('#splash'); if(s){ s.style.opacity='0'; setTimeout(()=>s.style.display='none',350); } }, 300);
 });
+</script>
 
-// PWA registration from URL (not blob)
-if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('./sw.js').catch(console.error);
-  });
-}
+<script>
+  if('serviceWorker' in navigator){
+    window.addEventListener('load',()=>{ navigator.serviceWorker.register('./sw.js').catch(console.error); });
+  }
+</script>
+<script>
+// --- Fail‑safe init patch (GitHub Pages spin fix) ---
+(function(){
+  // 1) Splash failsafe: sakrij nakon 3s i ako DB zapne
+  setTimeout(function(){
+    var s=document.getElementById('splash');
+    if(s){ s.style.opacity='0'; setTimeout(function(){ s.style.display='none'; }, 350); }
+  }, 3000);
+
+  // 2) Dodaj "Reset baza" gumb pored prijave (ne dira postojeći HTML)
+  function addResetButton(){
+    var loginBtn=document.getElementById('btnLogin');
+    if(!loginBtn || document.getElementById('btnResetDb')) return;
+    var btn=document.createElement('button');
+    btn.id='btnResetDb'; btn.className='btn danger'; btn.textContent='Reset baza';
+    btn.style.marginLeft='6px';
+    btn.title='Obriši lokalnu bazu (IndexedDB) i osvježi – koristite samo ako se splash ne gasi';
+    btn.onclick=function(){
+      if(!confirm('Resetirati lokalnu bazu i osvježiti aplikaciju?')) return;
+      try{ indexedDB.deleteDatabase('gradjevinski_dnevnik_v1'); }catch(e){}
+      try{ indexedDB.deleteDatabase('gradjevinski_v31'); }catch(e){}
+      try{ localStorage.clear(); sessionStorage.clear(); }catch(e){}
+      location.reload();
+    };
+    loginBtn.parentElement && loginBtn.parentElement.appendChild(btn);
+  }
+  addResetButton();
+
+  // 3) Pokušaj seedati korisnike ako funkcija postoji
+  try{ if(typeof ensureUsers==='function'){ ensureUsers().catch(()=>{}); } }catch(e){}
+
+  // 4) Service Worker: registracija + auto refresh ako ima nova verzija
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('./sw.js').then(function(reg){
+        if(reg.waiting){ reg.waiting.postMessage({type:'SKIP_WAITING'}); }
+        reg.addEventListener('updatefound', function(){
+          var nw=reg.installing; if(!nw) return;
+          nw.addEventListener('statechange', function(){
+            if(nw.state==='installed' && navigator.serviceWorker.controller){ location.reload(); }
+          });
+        });
+      }).catch(function(err){ console.warn('SW register failed', err); });
+    });
+  }
+})();
 </script>
 </body>
 </html>
