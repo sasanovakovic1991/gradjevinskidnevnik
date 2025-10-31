@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Građevinski dnevnik v3.1</title>
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="manifest" href="manifest.json" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root{--bg:#0f172a;--card:#1e2538;--muted:#94a3b8;--accent:#22c55e;--red:#dc2626;--gray:#374151;--text:#e5e7eb}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    header{position:sticky;top:0;background:#1e2538;padding:10px 16px;color:white;display:flex;justify-content:space-between;align-items:center;z-index:10}
+    main{max-width:1200px;margin:0 auto;padding:16px}
+    h1,h2,h3{margin:0 0 10px 0}
+    .btn{padding:8px 12px;border:none;border-radius:8px;cursor:pointer;font-weight:600}
+    .btn.primary{background:var(--accent);color:#052e16}
+    .btn.back{background:#334155;color:#fff}
+    .btn.pdf{background:#2563eb;color:#fff}
+    .btn.danger{background:var(--red);color:#fff}
+    .btn.excel{background:#22c55e;color:#052e16}
+    .card{background:var(--card);border-radius:12px;padding:16px;margin-top:16px}
+    select,input{width:100%;padding:8px;margin:4px 0;border-radius:8px;border:1px solid #2b3756;background:#0f172a;color:var(--text)}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th,td{border-bottom:1px solid #243049;padding:8px;text-align:left}
+    th{background:#14203b}
+    label{font-size:13px;color:var(--muted)}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .pill{display:inline-flex;gap:6px;align-items:center;padding:4px 8px;border:1px solid #2b3756;border-radius:999px;font-size:12px}
+    .list{border:1px dashed #2b3756;border-radius:10px;padding:8px}
+    .item{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:6px;border-bottom:1px solid #223}
+    .item:last-child{border-bottom:none}
+    .center-wrap{min-height:70vh;display:flex;align-items:center;justify-content:center}
+    #viewAuth.card{max-width:420px;margin:0 auto;text-align:center}
+    /* Splash screen */
+    #splash{position:fixed;inset:0;background:#0f172a;display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:9999;transition:opacity .35s ease}
+    #splash h1{color:#e5e7eb;margin:12px 0 0 0}
+    .spinner{width:38px;height:38px;border-radius:50%;border:3px solid #334155;border-top-color:#22c55e;animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media(max-width:768px){header{flex-direction:column;align-items:flex-start}}
+  </style>
+</head>
+<body>
+  <!-- Splash Screen -->
+  <div id="splash">
+    <div class="spinner"></div>
+    <h1>Građevinski dnevnik</h1>
+  </div>
+
+  <header>
+    <h1>Građevinski dnevnik</h1>
+    <div id="userBadge"></div>
+  </header>
+  <main class="center-wrap">
+    <!-- AUTH -->
+    <section id="viewAuth" class="card">
+      <h2>Prijava</h2>
+      <label>Uloga</label>
+      <select id="authRole">
+        <option value="foreman">Voditelj gradilišta</option>
+        <option value="admin">Administrator</option>
+      </select>
+      <label>PIN</label>
+      <input id="authPin" type="password" placeholder="****" />
+      <div class="row" style="justify-content:center">
+        <button class="btn primary" id="btnLogin">Prijava</button>
+      </div>
+      <p style="color:#94a3b8;font-size:13px;margin-top:8px">Voditelj: 123321 • Administrator: 852456</p>
+      <p id="msg" style="color:#f87171;font-size:13px"></p>
+    </section>
+
+    <!-- FOREMAN -->
+    <section id="viewForeman" class="card" style="display:none">
+      <div class="row" style="justify-content:space-between">
+        <h2>Unos dnevnika</h2>
+        <div class="row">
+          <button class="btn back" id="btnBackForeman">← Početna</button>
+        </div>
+      </div>
+      <div class="row">
+        <div style="flex:1;min-width:220px">
+          <label>Datum</label><input type="date" id="f_date"/>
+        </div>
+        <div style="flex:2;min-width:260px">
+          <label>Gradilište</label><select id="f_site"></select>
+        </div>
+      </div>
+
+      <div class="row">
+        <!-- Radnici dodavanje -->
+        <div class="card" style="flex:1;min-width:280px">
+          <h3>Radnici</h3>
+          <div class="row">
+            <select id="sel_worker" style="flex:1"></select>
+            <input type="number" id="hours_worker" value="9" min="0" step="0.25" style="width:90px"/>
+            <button class="btn" id="btnAddWorker">Dodaj</button>
+          </div>
+          <div id="list_workers" class="list" style="margin-top:8px"></div>
+        </div>
+        <!-- Strojevi dodavanje -->
+        <div class="card" style="flex:1;min-width:280px">
+          <h3>Strojevi</h3>
+          <div class="row">
+            <select id="sel_equipment" style="flex:1"></select>
+            <input type="number" id="hours_equipment" value="9" min="0" step="0.25" style="width:90px"/>
+            <button class="btn" id="btnAddEquipment">Dodaj</button>
+          </div>
+          <div id="list_equipment" class="list" style="margin-top:8px"></div>
+        </div>
+      </div>
+
+      <label>Napomena</label>
+      <input type="text" id="f_note" placeholder="Posebnosti dana..."/>
+      <div class="row" style="justify-content:space-between">
+        <span class="pill">Jednom zaključan dan nije moguće mijenjati</span>
+        <button class="btn primary" id="btnSubmitDay">Zaključaj dan</button>
+      </div>
+
+      <div id="f_myLogs" style="margin-top:16px"></div>
+    </section>
+
+    <!-- ADMIN -->
+    <section id="viewAdmin" class="card" style="display:none">
+      <div class="row" style="justify-content:space-between">
+        <h2>Administracija</h2>
+        <button class="btn back" id="btnBackAdmin">← Početna</button>
+      </div>
+      <div id="adminTabs" class="row" style="margin-top:8px"></div>
+      <div id="adminPanel"></div>
+    </section>
+  </main>
+
+  <footer style="text-align:center;padding:20px;color:#94a3b8">© 2025 Građevinski dnevnik • Offline</footer>
+
+<script>
+// =========== UTIL & DB ==========
+const $$=s=>document.querySelector(s);
+const uid=p=>p+'_'+Math.random().toString(36).slice(2,9);
+const DB='gradjevinski_v31';let db;
+const openDB=()=>new Promise((res,rej)=>{
+  const r=indexedDB.open(DB,2);
+  r.onupgradeneeded=e=>{
+    const d=e.target.result;
+    if(!d.objectStoreNames.contains('users')) d.createObjectStore('users',{keyPath:'id'});
+    if(!d.objectStoreNames.contains('sites')) d.createObjectStore('sites',{keyPath:'id'});
+    if(!d.objectStoreNames.contains('workers')) d.createObjectStore('workers',{keyPath:'id'});
+    if(!d.objectStoreNames.contains('equipment')) d.createObjectStore('equipment',{keyPath:'id'});
+    if(!d.objectStoreNames.contains('rates')) d.createObjectStore('rates',{keyPath:'id'}); // {id, entityType, sell, cost}
+    if(!d.objectStoreNames.contains('logs')) d.createObjectStore('logs',{keyPath:'id'});
+  };
+  r.onsuccess=()=>{db=r.result;res(db)};
+  r.onerror=()=>rej(r.error);
+});
+const tx=(s,m='readonly')=>db.transaction(s,m).objectStore(s);
+const put=(s,v)=>new Promise(r=>{const req=tx(s,'readwrite').put(v);req.onsuccess=()=>r(v)});
+const delRec=(s,id)=>new Promise(r=>{const req=tx(s,'readwrite').delete(id);req.onsuccess=()=>r(true)});
+const all=s=>new Promise(r=>{const req=tx(s).getAll();req.onsuccess=()=>r(req.result||[])});
+async function sha(t){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));return Array.from(new Uint8Array(b)).map(b=>b.toString(16).padStart(2,'0')).join('');}
+
+// =========== AUTH ==========
+async function ensureUsers(){
+  const u=await all('users'); if(u.length) return;
+  await put('users',{id:'admin',role:'admin',pinHash:await sha('852456')});
+  await put('users',{id:'foreman',role:'foreman',pinHash:await sha('123321')});
+}
+async function login(){
+  const role=$$('#authRole').value; const pin=$$('#authPin').value.trim();
+  const users=await all('users'); const user=users.find(u=>u.role===role);
+  if(!user) return $$('#msg').textContent='Nema korisnika. Očisti staru bazu ili ponovno učitaj.';
+  const ok=(await sha(pin))===user.pinHash; if(!ok) return $$('#msg').textContent='Krivi PIN.';
+  $$('#viewAuth').style.display='none';
+  if(role==='admin') renderAdmin(); else renderForeman();
+}
+
+// =========== FOREMAN ==========
+let draftWorkers=[]; let draftEquip=[];
+async function renderForeman(){
+  $$('#viewForeman').style.display='block';
+  $$('#btnBackForeman').onclick=()=>location.reload();
+  const sites=await all('sites');
+  $$('#f_site').innerHTML=sites.map(s=>`<option value="${s.id}">${s.name}${s.location?(' ('+s.location+')'):''}</option>`).join('');
+  const workers=await all('workers'); const eqp=await all('equipment');
+  $$('#sel_worker').innerHTML=workers.map(w=>`<option value="${w.id}">${w.name} (${w.role||''})</option>`).join('');
+  $$('#sel_equipment').innerHTML=eqp.map(e=>`<option value="${e.id}">${e.name} (${e.kind||''})</option>`).join('');
+  draftWorkers=[]; draftEquip=[]; renderDraftLists();
+  $$('#btnAddWorker').onclick=()=>{ const id=$$('#sel_worker').value; const name=workers.find(x=>x.id===id)?.name||id; const h=+($$('#hours_worker').value||9); const ex=draftWorkers.find(x=>x.id===id); if(ex) ex.hours+=h; else draftWorkers.push({id,name,hours:h}); renderDraftLists(); };
+  $$('#btnAddEquipment').onclick=()=>{ const id=$$('#sel_equipment').value; const name=eqp.find(x=>x.id===id)?.name||id; const h=+($$('#hours_equipment').value||9); const ex=draftEquip.find(x=>x.id===id); if(ex) ex.hours+=h; else draftEquip.push({id,name,hours:h}); renderDraftLists(); };
+  $$('#btnSubmitDay').onclick=saveDay;
+  $$('#f_date').valueAsDate=new Date();
+  renderMyLogs();
+}
+function renderDraftLists(){
+  const wBox=$$('#list_workers'); const eBox=$$('#list_equipment');
+  wBox.innerHTML = draftWorkers.map((w,i)=>`<div class="item"><span>${w.name}</span><input type="number" value="${w.hours}" min="0" step="0.25" style="width:90px" onchange="updateDraft('w',${i},this.value)"/>h <button class="btn danger" onclick="removeDraft('w',${i})">X</button></div>`).join('')||'<span class="muted">Nema dodanih radnika.</span>';
+  eBox.innerHTML = draftEquip.map((e,i)=>`<div class="item"><span>${e.name}</span><input type="number" value="${e.hours}" min="0" step="0.25" style="width:90px" onchange="updateDraft('e',${i},this.value)"/>h <button class="btn danger" onclick="removeDraft('e',${i})">X</button></div>`).join('')||'<span class="muted">Nema dodanih strojeva.</span>';
+}
+function updateDraft(type, idx, val){ if(type==='w'){draftWorkers[idx].hours=+val}else{draftEquip[idx].hours=+val} }
+function removeDraft(type, idx){ if(type==='w'){draftWorkers.splice(idx,1)} else {draftEquip.splice(idx,1)} renderDraftLists(); }
+
+async function saveDay(){
+  const date=$$('#f_date').value, site=$$('#f_site').value;
+  if(!site||!date) return alert('Odaberi gradilište i datum.');
+  if(!draftWorkers.length && !draftEquip.length) return alert('Dodaj barem jednog radnika ili stroj.');
+  await put('logs',{id:uid('log'),date,siteId:site,workers:draftWorkers,equipment:draftEquip,note:$$('#f_note').value,locked:true});
+  alert('Dan zaključen.'); draftWorkers=[]; draftEquip=[]; renderDraftLists(); renderMyLogs();
+}
+
+async function renderMyLogs(){
+  const logs=await all('logs'); const sites=await all('sites'); const sm=Object.fromEntries(sites.map(s=>[s.id,s.name]));
+  const box=$$('#f_myLogs'); box.innerHTML='<h3>Moji unosi</h3>';
+  logs.slice().reverse().forEach(l=>{
+    const w=l.workers.map(w=>`${w.name} ${w.hours}h`).join(', ')||'-';
+    const e=l.equipment.map(x=>`${x.name} ${x.hours}h`).join(', ')||'-';
+    box.innerHTML+=`<div style='margin:6px 0;padding:6px;border-bottom:1px solid #2b3756'>
+      <b>${l.date}</b> – ${sm[l.siteId]||'-'}<br><small>Radnici: ${w}<br>Strojevi: ${e}</small></div>`;
+  });
+}
+
+// =========== ADMIN ==========
+async function renderAdmin(){
+  $$('#viewAdmin').style.display='block';
+  $$('#btnBackAdmin').onclick=()=>location.reload();
+  const tabs=[
+    {id:'sites',label:'Gradilišta'},
+    {id:'workers',label:'Radnici & cijene'},
+    {id:'equipment',label:'Oprema & cijene'},
+    {id:'reports',label:'Izvještaji'},
+    {id:'payroll',label:'Evidencija sati (plaće)'},
+    {id:'sitehours',label:'Sati po gradilištu'}
+  ];
+  const tb=$$('#adminTabs'); tb.innerHTML='';
+  tabs.forEach(t=>{const b=document.createElement('button'); b.className='btn'; b.textContent=t.label; b.onclick=()=>adminPanel(t.id); tb.appendChild(b)});
+  adminPanel('reports');
+}
+
+async function adminPanel(view){
+  const root=$$('#adminPanel'); root.innerHTML='';
+  if(view==='sites') return root.append(await tableEdit('sites',['name','location'],['Naziv','Lokacija']));
+  if(view==='workers') return root.append(await tableEditWithRates('workers',['name','role'],['Ime','Uloga'],'worker'));
+  if(view==='equipment') return root.append(await tableEditWithRates('equipment',['name','kind'],['Naziv','Vrsta'],'equipment'));
+  if(view==='reports') return renderReports();
+  if(view==='payroll') return renderPayroll();
+  if(view==='sitehours') return renderSiteHours();
+}
+
+async function tableEdit(store,fields,labels){
+  const wrap=document.createElement('div');
+  const data=await all(store);
+  let html='<table><tr>'+labels.map(l=>`<th>${l}</th>`).join('')+'<th>Akcija</th></tr>';
+  data.forEach(d=>{
+    html+='<tr>'+fields.map(f=>`<td contenteditable onblur="updateField(\'${store}\',\'${d.id}\',\'${f}\',this.innerText)">${d[f]||''}</td>`).join('')+
+      `<td><button class='btn danger' onclick="delRec('${store}','${d.id}').then(()=>adminPanel('${store}'))">Obriši</button></td></tr>`;
+  });
+  html+='</table><h4>Dodaj novi</h4>';
+  fields.forEach((f,i)=> html+=`<input id='add_${f}' placeholder='${labels[i]}'>`);
+  html+=` <button class='btn primary' onclick="addRecBasic('${store}')">Dodaj</button>`;
+  wrap.innerHTML=html; return wrap;
+}
+async function addRecBasic(store){
+  if(store==='sites'){
+    const name=$$('#add_name')?.value?.trim(); const location=$$('#add_location')?.value?.trim(); if(!name) return alert('Naziv je obavezan.');
+    await put('sites',{id:uid('site'),name,location}); adminPanel('sites');
+  }
+}
+
+async function tableEditWithRates(store,fields,labels,entityType){
+  const wrap=document.createElement('div');
+  const data=await all(store); const rates=await all('rates');
+  const rmap=Object.fromEntries(rates.map(r=>[r.id,{sell:r.sell||0,cost:r.cost||0}]));
+  let html='<table><tr>'+labels.map(l=>`<th>${l}</th>`).join('')+`<th>Cijena €/h (prodaja)</th><th>Nabavna €/h (trošak)</th><th>Akcija</th></tr>`;
+  data.forEach(d=>{
+    const rv=rmap[d.id]||{sell:'',cost:''};
+    html+='<tr>'+fields.map(f=>`<td contenteditable onblur="updateField(\'${store}\',\'${d.id}\',\'${f}\',this.innerText)">${d[f]||''}</td>`).join('')+
+      `<td contenteditable onblur="updateRate('${d.id}','sell',this.innerText)">${rv.sell}</td>`+
+      `<td contenteditable onblur="updateRate('${d.id}','cost',this.innerText)">${rv.cost}</td>`+
+      `<td><button class='btn danger' onclick="delEntityWithRate('${store}','${d.id}')">Obriši</button></td></tr>`;
+  });
+  html+='</table><h4>Dodaj novi</h4>';
+  labels.forEach((l,i)=> html+=`<input id='add_${fields[i]}' placeholder='${l}'>`);
+  html+=`<input id='add_sell' placeholder='Cijena €/h (prodajna)'><input id='add_cost' placeholder='Nabavna €/h (trošak)'>`;
+  html+=` <button class='btn primary' onclick="addEntityWithRate('${store}','${entityType}')">Dodaj</button>`;
+  wrap.innerHTML=html; return wrap;
+}
+async function updateField(store,id,key,val){
+  const rows=await all(store); const rec=rows.find(x=>x.id===id);
+  if(rec){ rec[key]=val; await put(store,rec); }
+}
+async function updateRate(id,key,val){
+  const store=tx('rates','readwrite'); const req=store.get(id); req.onsuccess=()=>{const cur=req.result||{id}; cur[key]=+val||0; put('rates',cur)};
+}
+async function delEntityWithRate(store,id){ await delRec(store,id); await delRec('rates',id); adminPanel(store); }
+async function addEntityWithRate(store,entityType){
+  const name=$$('#add_name')?.value?.trim(); if(!name) return alert('Naziv/Ime je obavezno.');
+  const extra1=$$('#add_role')?.value?.trim()||$$('#add_kind')?.value?.trim()||'';
+  const sell=+($$('#add_sell')?.value||0), cost=+($$('#add_cost')?.value||0);
+  const id = store==='workers'?uid('wrk'):uid('eqp');
+  if(store==='workers') await put('workers',{id,name,role:extra1}); else await put('equipment',{id,name,kind:extra1});
+  await put('rates',{id,entityType,sell, cost}); adminPanel(store);
+}
+
+// =========== REPORTS & CHART ==========
+function fmtE(n){return (n||0).toFixed(2)+'€'}
+function fmtH(n){return (n||0).toFixed(2)+'h'}
+
+async function renderReports(){
+  const wrap=document.createElement('div');
+  wrap.innerHTML=`
+    <h3>Izvještaji</h3>
+    <div class="row" style="align-items:end">
+      <div><label>Gradilište</label><select id="rep_site"></select></div>
+      <div><label>Od</label><input type="date" id="rep_from"></div>
+      <div><label>Do</label><input type="date" id="rep_to"></div>
+      <div class="row">
+        <button class="btn primary" id="btnFilter">Filtriraj</button>
+        <button class="btn pdf" id="btnPDF">PDF sažetak</button>
+        <button class="btn excel" id="btnExcel">💾 Excel backup (dnevnici)</button>
+      </div>
+    </div>
+    <div id="rep_text" style="white-space:pre-wrap;margin-top:12px"></div>
+    <canvas id="rep_chart"></canvas>`;
+  $$('#adminPanel').append(wrap);
+  const sites=await all('sites');
+  $$('#rep_site').innerHTML='<option value="all">Sva gradilišta</option>'+sites.map(s=>`<option value="${s.id}">${s.name}${s.location?(' ('+s.location+')'):''}</option>`).join('');
+  $$('#btnFilter').onclick=()=>loadReport();
+  $$('#btnPDF').onclick=()=>exportPDFSummaryText();
+  $$('#btnExcel').onclick=()=>exportExcelLogs();
+  loadReport();
+}
+
+function buildAgg(logs, rates, sites){
+  const sm=Object.fromEntries(sites.map(s=>[s.id, s.name+(s.location?` (${s.location})`:'')]));
+  const rm=Object.fromEntries(rates.map(r=>[r.id, {sell:r.sell||0, cost:r.cost||0}]));
+  const agg={};
+  for(const l of logs){
+    const label=sm[l.siteId]||l.siteId; agg[label]??={laborSell:0,equipSell:0,totalSell:0, laborCost:0,equipCost:0};
+    l.workers.forEach(w=>{ const r=rm[w.id]||{sell:0,cost:0}; agg[label].laborSell+=r.sell*(w.hours||0); agg[label].laborCost+=r.cost*(w.hours||0); });
+    l.equipment.forEach(e=>{ const r=rm[e.id]||{sell:0,cost:0}; agg[label].equipSell+=r.sell*(e.hours||0); agg[label].equipCost+=r.cost*(e.hours||0); });
+  }
+  Object.values(agg).forEach(v=> v.totalSell = v.laborSell + v.equipSell);
+  return agg;
+}
+
+async function loadReport(){
+  const [logs,rates,sites]=await Promise.all([all('logs'),all('rates'),all('sites')]);
+  const site=$$('#rep_site').value, from=$$('#rep_from').value, to=$$('#rep_to').value;
+  const flogs=logs.filter(l=>(!from||l.date>=from)&&(!to||l.date<=to)&&(site==='all'||l.siteId===site));
+  const agg=buildAgg(flogs, rates, sites);
+  // TEXTUAL SUMMARY
+  let text=''; let grand=0;
+  for(const [name,v] of Object.entries(agg)){
+    const sum=v.totalSell; grand+=sum;
+    text+=`• ${name}
+   - Trošak radnika: ${fmtE(v.laborSell)}
+   - Trošak strojeva: ${fmtE(v.equipSell)}
+   - UKUPNO: ${fmtE(sum)}
+
+`;
+  }
+  text+=`UKUPAN TROŠAK SVIH GRADILIŠTA: ${fmtE(grand)}`;
+  $$('#rep_text').textContent=text || 'Nema zapisa u odabranom periodu.';
+  drawAggChart(agg);
+}
+
+function drawAggChart(agg){
+  const labels=Object.keys(agg);
+  const labor=Object.values(agg).map(v=>v.laborSell);
+  const equip=Object.values(agg).map(v=>v.equipSell);
+  const total=labor.map((x,i)=>x+(equip[i]||0));
+  const ctx=$$('#rep_chart').getContext('2d'); if(window.repChart) window.repChart.destroy();
+  window.repChart=new Chart(ctx,{type:'bar',data:{labels,datasets:[
+    {label:'Radnici',data:labor,backgroundColor:'rgba(37,99,235,0.85)',stack:'cost'},
+    {label:'Strojevi',data:equip,backgroundColor:'rgba(107,114,128,0.85)',stack:'cost'},
+    {type:'bar',label:'Ukupno',data:total,backgroundColor:'transparent',borderColor:'#dc2626',borderWidth:2,stack:'outline',order:3}
+  ]},options:{plugins:{legend:{position:'bottom'}},scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}}});
+}
+
+// =========== PDF (TEXTUAL) ==========
+async function exportPDFSummaryText(){
+  const {jsPDF}=window.jspdf; const doc=new jsPDF({orientation:'portrait',unit:'px',format:'a4'});
+  const date=new Date().toLocaleString('hr-HR');
+  doc.setTextColor(220,38,38); doc.setFontSize(18); doc.text('Građevinski dnevnik',140,30);
+  doc.setTextColor(0,0,0); doc.setFontSize(12); doc.text(`Izvještaj generiran: ${date}` ,20,50);
+  const lines=$$('#rep_text').textContent.split('\n'); let y=70; const maxW=380;
+  lines.forEach(line=>{ const chunks=doc.splitTextToSize(line,maxW); chunks.forEach(ch=>{ if(y>760){doc.addPage(); y=40;} doc.text(ch,20,y); y+=16; }); });
+  const url=doc.output('bloburl'); window.open(url,'_blank');
+}
+
+// =========== PAYROLL (Evidencija sati po radniku) ==========
+async function renderPayroll(){
+  const wrap=document.createElement('div');
+  wrap.innerHTML=`
+    <h3>Evidencija sati (plaće)</h3>
+    <div class="row" style="align-items:end">
+      <div><label>Od</label><input type="date" id="pl_from"></div>
+      <div><label>Do</label><input type="date" id="pl_to"></div>
+      <button class="btn primary" id="pl_go">Izračunaj</button>
+      <button class="btn pdf" id="pl_pdf">PDF</button>
+    </div>
+    <div id="pl_text" style="white-space:pre-wrap;margin-top:12px"></div>`;
+  $$('#adminPanel').append(wrap);
+  $$('#pl_go').onclick=()=>loadPayroll();
+  $$('#pl_pdf').onclick=()=>exportPayrollPDF();
+}
+async function loadPayroll(){
+  const from=$$('#pl_from').value, to=$$('#pl_to').value;
+  const [logs,workers,rates]=await Promise.all([all('logs'),all('workers'),all('rates')]);
+  const wm=Object.fromEntries(workers.map(w=>[w.id,w.name]));
+  const rm=Object.fromEntries(rates.map(r=>[r.id,{sell:r.sell||0,cost:r.cost||0}]));
+  const agg={};
+  logs.filter(l=>(!from||l.date>=from)&&(!to||l.date<=to)).forEach(l=>{
+    l.workers.forEach(w=>{agg[w.id]??={name:wm[w.id]||w.id,hours:0,cost:0,sell:0}; agg[w.id].hours+=(w.hours||0); const r=rm[w.id]||{sell:0,cost:0}; agg[w.id].sell+=r.sell*(w.hours||0); agg[w.id].cost+=r.cost*(w.hours||0);});
+  });
+  let text='Evidencija sati po radniku\n\n'; let totalHours=0, totalCost=0, totalSell=0;
+  Object.values(agg).sort((a,b)=>a.name.localeCompare(b.name)).forEach(v=>{ totalHours+=v.hours; totalCost+=v.cost; totalSell+=v.sell; text+=`• ${v.name}: ${fmtH(v.hours)} | Trošak: ${fmtE(v.cost)} | Obračun (prodaja): ${fmtE(v.sell)}\n`; });
+  text+=`\nUKUPNO sati: ${fmtH(totalHours)}\nUKUPAN trošak: ${fmtE(totalCost)}\nUKUPAN obračun (prodaja): ${fmtE(totalSell)}`;
+  $$('#pl_text').textContent=text || 'Nema podataka u odabranom periodu.';
+}
+async function exportPayrollPDF(){
+  const {jsPDF}=window.jspdf; const doc=new jsPDF({orientation:'portrait',unit:'px',format:'a4'});
+  const date=new Date().toLocaleString('hr-HR');
+  doc.setTextColor(220,38,38); doc.setFontSize(18); doc.text('Građevinski dnevnik',140,30);
+  doc.setTextColor(0,0,0); doc.setFontSize(12); doc.text(`Evidencija sati – generirano: ${date}`,20,50);
+  const lines=$$('#pl_text').textContent.split('\n'); let y=70; const maxW=380;
+  lines.forEach(line=>{ const chunk=doc.splitTextToSize(line,maxW); chunk.forEach(ch=>{ if(y>760){doc.addPage(); y=40;} doc.text(ch,20,y); y+=16; }); });
+  const url=doc.output('bloburl'); window.open(url,'_blank');
+}
+
+// =========== SITE HOURS (Sati po pojedinom gradilištu) ==========
+async function renderSiteHours(){
+  const wrap=document.createElement('div');
+  wrap.innerHTML=`
+    <h3>Sati po gradilištu</h3>
+    <div class="row" style="align-items:end">
+      <div><label>Gradilište</label><select id="sh_site"></select></div>
+      <div><label>Od</label><input type="date" id="sh_from"></div>
+      <div><label>Do</label><input type="date" id="sh_to"></div>
+      <button class="btn primary" id="sh_go">Prikaži</button>
+      <button class="btn pdf" id="sh_pdf">PDF</button>
+    </div>
+    <div id="sh_text" style="white-space:pre-wrap;margin-top:12px"></div>`;
+  $$('#adminPanel').append(wrap);
+  const sites=await all('sites');
+  $$('#sh_site').innerHTML=sites.map(s=>`<option value="${s.id}">${s.name}${s.location?(' ('+s.location+')'):''}</option>`).join('');
+  $$('#sh_go').onclick=()=>loadSiteHours();
+  $$('#sh_pdf').onclick=()=>exportSiteHoursPDF();
+}
+async function loadSiteHours(){
+  const site=$$('#sh_site').value, from=$$('#sh_from').value, to=$$('#sh_to').value;
+  const [logs,workers,equipment]=await Promise.all([all('logs'),all('workers'),all('equipment')]);
+  const wm=Object.fromEntries(workers.map(w=>[w.id,w.name]));
+  const em=Object.fromEntries(equipment.map(e=>[e.id,e.name]));
+  const filtered=logs.filter(l=> l.siteId===site && (!from||l.date>=from) && (!to||l.date<=to));
+  const aggW={}, aggE={}; let totalWh=0, totalEh=0;
+  filtered.forEach(l=>{
+    l.workers.forEach(w=>{ aggW[w.id]??={name:wm[w.id]||w.name, hours:0}; aggW[w.id].hours+=(w.hours||0); totalWh+=w.hours||0; });
+    l.equipment.forEach(e=>{ aggE[e.id]??={name:em[e.id]||e.name, hours:0}; aggE[e.id].hours+=(e.hours||0); totalEh+=e.hours||0; });
+  });
+  let text='';
+  text+='RADNICI (sati)\n';
+  if(Object.keys(aggW).length===0) text+='  — Nema zapisa\n';
+  else Object.values(aggW).sort((a,b)=>a.name.localeCompare(b.name)).forEach(v=>{ text+=`  • ${v.name}: ${fmtH(v.hours)}\n`; });
+  text+=`  Ukupno sati radnika: ${fmtH(totalWh)}\n\n`;
+  text+='STROJEVI (sati)\n';
+  if(Object.keys(aggE).length===0) text+='  — Nema zapisa\n';
+  else Object.values(aggE).sort((a,b)=>a.name.localeCompare(b.name)).forEach(v=>{ text+=`  • ${v.name}: ${fmtH(v.hours)}\n`; });
+  text+=`  Ukupno sati strojeva: ${fmtH(totalEh)}\n`;
+  $$('#sh_text').textContent=text || 'Nema podataka za odabrano gradilište/razdoblje.';
+}
+async function exportSiteHoursPDF(){
+  const {jsPDF}=window.jspdf; const doc=new jsPDF({orientation:'portrait',unit:'px',format:'a4'});
+  const date=new Date().toLocaleString('hr-HR');
+  doc.setTextColor(220,38,38); doc.setFontSize(18); doc.text('Građevinski dnevnik',140,30);
+  doc.setTextColor(0,0,0); doc.setFontSize(12); doc.text(`Sati po gradilištu – generirano: ${date}`,20,50);
+  const lines=$$('#sh_text').textContent.split('\n'); let y=70; const maxW=380;
+  lines.forEach(line=>{ const chunk=doc.splitTextToSize(line,maxW); chunk.forEach(ch=>{ if(y>760){doc.addPage(); y=40;} doc.text(ch,20,y); y+=16; }); });
+  const url=doc.output('bloburl'); window.open(url,'_blank');
+}
+
+// =========== EXCEL BACKUP (DNEVNICI) ==========
+async function exportExcelLogs(){
+  const [logs,sites]=await Promise.all([all('logs'),all('sites')]);
+  const sm=Object.fromEntries(sites.map(s=>[s.id, s.name+(s.location?` (${s.location})`:'')]));
+  const rows=[]; logs.sort((a,b)=>a.date.localeCompare(b.date)).forEach(l=>{
+    rows.push({ Datum:l.date, Gradilište:sm[l.siteId]||l.siteId, Radnici:l.workers.map(w=>`${w.name}:${w.hours}h`).join(' | '), Oprema:l.equipment.map(e=>`${e.name}:${e.hours}h`).join(' | '), Napomena:l.note||'' });
+  });
+  const wb=XLSX.utils.book_new(); const ws=XLSX.utils.json_to_sheet(rows); XLSX.utils.book_append_sheet(wb, ws, 'Dnevnici');
+  const stamp=new Date().toISOString().slice(0,10); XLSX.writeFile(wb, `backup_gradjevinski_dnevnik_${stamp}.xlsx`);
+}
+
+// =========== BOOT & PWA ==========
+openDB().then(()=>{
+  ensureUsers();
+  $$('#btnLogin').onclick=login;
+  // hide splash shortly after DB ready (failsafe timeout as well)
+  setTimeout(()=>{ const s=$$('#splash'); if(s){ s.style.opacity='0'; setTimeout(()=>s.style.display='none',350); } }, 400);
+});
+
+// PWA registration from URL (not blob)
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('./sw.js').catch(console.error);
+  });
+}
+</script>
+</body>
+</html>
